@@ -5,12 +5,12 @@ const app = express();
 
 const port = process.env.PORT || 7000;
 
-// 1. Addon definīcija
+// 1. Addon definīcija (Manifest)
 const manifest = {
     id: "lv.raitino90.fano_personal",
-    version: "1.0.1",
+    version: "1.0.0", 
     name: "Fano.in Personal",
-    description: "Fano.in straumēšana. Ievadi savus datus, lai sāktu.",
+    description: "Fano.in straumēšana, nepieciešams lietotājvārds un parole.",
     resources: ["stream"],
     types: ["movie", "series"],
     idPrefixes: ["tt"],
@@ -47,22 +47,19 @@ async function getFanoCookie(username, password) {
 builder.defineStreamHandler(async (args) => {
     let config = {};
     
-    // Mēģinām nolasīt konfigurāciju no URL (vecais stils)
+    // Nolasām konfigurāciju, ko Stremio padod caur URL
     if (args.config) {
         config = args.config;
-    } else if (args.extra) {
-        // Dažreiz vecās versijas padod datus caur extra
-        config = args.extra;
     }
 
     if (!config.username || !config.password) {
-        return { streams: [{ title: "Lūdzu konfigurējiet addon!", url: "" }] };
+        return { streams: [{ title: "Lūdzu konfigurējiet addon sākumlapā!", url: "" }] };
     }
 
     console.log(`Pieprasījums no: ${config.username} priekš ${args.id}`);
     
     const cookie = await getFanoCookie(config.username, config.password);
-    if (!cookie) return { streams: [{ title: "Nepareiza parole vai Fano kļūda", url: "" }] };
+    if (!cookie) return { streams: [{ title: "Pieteikšanās neizdevās (nepareiza parole vai Fano kļūda)", url: "" }] };
 
     const imdbId = args.id.split(":")[0];
 
@@ -71,6 +68,7 @@ builder.defineStreamHandler(async (args) => {
             headers: { cookie, "User-Agent": "Mozilla/5.0" }
         });
 
+        // Meklējam torrenta lapas saiti ar IMDb ID URL
         const linkMatch = search.data.match(/href="(torrent\/[^"]*tt\d{7,8}[^"]*)"/i);
         if (!linkMatch) return { streams: [] };
 
@@ -78,6 +76,7 @@ builder.defineStreamHandler(async (args) => {
             headers: { cookie, "User-Agent": "Mozilla/5.0" }
         });
 
+        // Meklējam magnet linku
         const magnetMatch = torrentPage.data.match(/href="(magnet:\?xt=urn:btih:[^"]+)"/);
         if (magnetMatch) {
             return { 
@@ -102,20 +101,20 @@ app.get("/", (req, res) => {
     <html>
     <head>
         <meta charset="utf-8">
-        <title>Konfigurēt Fano.in Addon</title>
+        <title>Fano.in Stremio Konfigurācija</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
-            body { font-family: sans-serif; background: #111; color: #fff; padding: 20px; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-            .container { background: #222; padding: 40px; border-radius: 8px; text-align: center; max-width: 400px; width: 100%; }
-            input { width: 100%; padding: 10px; margin: 10px 0; border-radius: 4px; border: none; box-sizing: border-box; }
-            button { background: #8855ff; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 16px; width: 100%; }
+            body { font-family: sans-serif; background: #111; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+            .box { background: #222; padding: 30px; border-radius: 8px; text-align: center; max-width: 400px; width: 90%; }
+            input { width: 100%; padding: 12px; margin: 10px 0; border-radius: 4px; border: none; box-sizing: border-box; }
+            button { background: #8855ff; color: white; border: none; padding: 12px; border-radius: 4px; cursor: pointer; width: 100%; font-weight: bold; }
             button:hover { background: #6633cc; }
-            h2 { color: #8855ff; }
         </style>
     </head>
     <body>
-        <div class="container">
-            <h2>Fano.in Konfigurācija</h2>
-            <p>Ievadi savus datus, lai ģenerētu saiti.</p>
+        <div class="box">
+            <h2>Fano.in Personal Addon</h2>
+            <p>Ievadiet savu Fano.in lietotājvārdu un paroli, lai ģenerētu instalācijas saiti.</p>
             <input type="text" id="user" placeholder="Lietotājvārds">
             <input type="password" id="pass" placeholder="Parole">
             <button onclick="install()">Instalēt Stremio</button>
@@ -124,18 +123,13 @@ app.get("/", (req, res) => {
             function install() {
                 const user = document.getElementById('user').value;
                 const pass = document.getElementById('pass').value;
-                if(!user || !pass) return alert('Ievadi abus laukus!');
+                if(!user || !pass) return alert('Ievadiet abus laukus!');
                 
-                // Izveidojam JSON konfigurāciju
                 const config = { username: user, password: pass };
-                const configStr = JSON.stringify(config);
-                // Kodējam uz base64
-                const encoded = btoa(configStr); // base64
+                const encoded = btoa(JSON.stringify(config));
                 
-                // Stremio installs prasa šādu formātu: /<base64_config>/manifest.json
-                const loc = window.location;
-                const streamUrl = "stremio://" + loc.host + "/" + encoded + "/manifest.json";
-                window.location.href = streamUrl;
+                // Ģenerējam Stremio instalācijas saiti (host/base64/manifest.json)
+                window.location.href = "stremio://" + window.location.host + "/" + encoded + "/manifest.json";
             }
         </script>
     </body>
@@ -144,13 +138,12 @@ app.get("/", (req, res) => {
     res.send(html);
 });
 
-// 5. Startējam serveri
+// 5. Startējam serveri un Maršrutēšanas Labojums
 const addonInterface = builder.getInterface();
-// Pievienojam maršrutētāju. Svarīgi: SDK v1 ņem konfigurāciju no URL ceļa
-app.use((req, res, next) => {
-    getRouter(addonInterface)(req, res, next);
-});
+
+// LIELĀKAIS LABOJUMS: Mēs sakām Express, ka visus pārējos pieprasījumus (manifest, stream, utt.) jāapstrādā SDK maršrutētājam.
+app.use('/', getRouter(addonInterface)); 
 
 app.listen(port, () => {
-    console.log(`Addon aktīvs uz porta ${port}`);
+    console.log(`Fano.in Addon startēts uz porta ${port}`);
 });
