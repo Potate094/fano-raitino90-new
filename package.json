@@ -1,0 +1,11 @@
+{
+  "name": "fano-raitino90",
+  "version": "3.0.0",
+  "main": "index.js",
+  "scripts": { "start": "node index.js" },
+  "dependencies": {
+    "stremio-addon-sdk": "latest",
+    "axios": "latest"
+  },
+  "engines": { "node": ">=18" }
+}
