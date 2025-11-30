@@ -146,8 +146,9 @@ app.get("/", (req, res) => {
 // 5. Startējam serveri un Maršrutēšanas Labojums
 const addonInterface = builder.getInterface();
 
-// Šī rinda ir vitāli svarīga, lai Stremio SDK apstrādātu konfigurācijas ceļu
-app.use('/', getRouter(addonInterface)); 
+// Pieprasām Express, lai izmantotu Stremio SDK maršrutētāju. 
+// Šī Express konstrukcija ir visuzticamākā, lai apstrādātu gan manifestu, gan konfigurācijas URL.
+app.use(getRouter(addonInterface)); 
 
 app.listen(port, () => {
     console.log(`Fano.in Addon startēts uz porta ${port}`);
