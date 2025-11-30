@@ -18,7 +18,7 @@ const manifest = {
 
 const builder = new addonBuilder(manifest);
 
-// CONFIG
+// CONFIG – vecā 1.4.3 sintakse
 builder.defineConfig({
   itemShape: {
     username: {
@@ -49,7 +49,8 @@ builder.defineStreamHandler(async (args) => {
 
   // LOGIN
   try {
-    const loginData = `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`;
+    const loginData =
+      `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`;
 
     const login = await axios.post("https://fano.in/login.php", loginData, {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -58,7 +59,7 @@ builder.defineStreamHandler(async (args) => {
     });
 
     const cookies = login.headers["set-cookie"];
-    if (cookies) cookie = cookies.map(c => c.split(";")[0]).join("; ");
+    if (cookies) cookie = cookies.map(x => x.split(";")[0]).join("; ");
 
   } catch (err) {
     console.log("LOGIN ERROR:", err.message);
@@ -69,18 +70,21 @@ builder.defineStreamHandler(async (args) => {
 
   // SEARCH TORRENT
   try {
-    const search = await axios.get(`https://fano.in/search.php?search=${imdbId}`, {
-      headers: { cookie }
-    });
+    const search = await axios.get(
+      `https://fano.in/search.php?search=${imdbId}`,
+      { headers: { cookie } }
+    );
 
-    const linkMatch = search.data.match(/href="(torrent\/[^"]*tt\d{7,8}[^"]*)"/i);
+    const linkMatch =
+      search.data.match(/href="(torrent\/[^"]*tt\d{7,8}[^"]*)"/i);
     if (!linkMatch) return { streams: [] };
 
     const torrentPage = await axios.get(`https://fano.in/${linkMatch[1]}`, {
       headers: { cookie }
     });
 
-    const magnetMatch = torrentPage.data.match(/href="(magnet:\?xt=urn:btih:[^"]+)"/);
+    const magnetMatch =
+      torrentPage.data.match(/href="(magnet:\?xt=urn:btih:[^"]+)"/);
 
     if (magnetMatch) {
       return {
@@ -93,12 +97,12 @@ builder.defineStreamHandler(async (args) => {
       };
     }
 
-  } catch (err) {
-    console.log("STREAM ERROR:", err.message);
+  } catch (e) {
+    console.log("STREAM ERROR:", e.message);
   }
 
   return { streams: [] };
 });
 
-// SERVER
+// EXPORT (1.4.3 format)
 module.exports = builder.getInterface();
