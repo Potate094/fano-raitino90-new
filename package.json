@@ -6,8 +6,8 @@
     "start": "node index.js"
   },
   "dependencies": {
-  "stremio-addon-sdk": "2.1.0",
-  "axios": "1.7.7"
+    "stremio-addon-sdk": "^1.4.3",
+    "axios": "1.7.7"
   },
   "engines": {
     "node": ">=18"
