@@ -4,7 +4,7 @@ const axios = require("axios");
 
 const builder = new addonBuilder({
   id: "lv.raitino90.fano",
-  version: "3.0",
+  version: "3.0.0",
   name: "Fano.in Personal by Raitino90",
   description: "Drošs 24/7 addons – katram savs fano konts",
   resources: ["stream"],
