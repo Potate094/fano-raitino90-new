@@ -4,7 +4,7 @@ const axios = require("axios");
 // Addon pamatinformācija
 const builder = new addonBuilder({
     id: "lv.raitino90.fano_personal_v2",
-    version: "2.0.0",
+    version: "^2.0.0",
     name: "Fano.in Personal (v2)",
     description: "Personalizēts Stremio papildinājums ar Fano.in atbalstu",
     resources: ["stream"],
