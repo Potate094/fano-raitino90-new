@@ -126,7 +126,12 @@ app.get("/", (req, res) => {
                 if(!user || !pass) return alert('Ievadiet abus laukus!');
                 
                 const config = { username: user, password: pass };
-                const encoded = btoa(JSON.stringify(config));
+                
+                // 1. Standarta Base64 kodēšana
+                let encoded = btoa(JSON.stringify(config));
+                
+                // 2. URL-Safe Labojums: Aizstājam '/' un '+' ar '_' un '-', un noņemam "="
+                encoded = encoded.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); 
                 
                 // Ģenerējam Stremio instalācijas saiti (host/base64/manifest.json)
                 window.location.href = "stremio://" + window.location.host + "/" + encoded + "/manifest.json";
@@ -141,7 +146,7 @@ app.get("/", (req, res) => {
 // 5. Startējam serveri un Maršrutēšanas Labojums
 const addonInterface = builder.getInterface();
 
-// LIELĀKAIS LABOJUMS: Mēs sakām Express, ka visus pārējos pieprasījumus (manifest, stream, utt.) jāapstrādā SDK maršrutētājam.
+// Šī rinda ir vitāli svarīga, lai Stremio SDK apstrādātu konfigurācijas ceļu
 app.use('/', getRouter(addonInterface)); 
 
 app.listen(port, () => {
