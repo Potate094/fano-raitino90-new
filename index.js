@@ -130,7 +130,8 @@ app.get("/", (req, res) => {
                 // 1. Standarta Base64 kodēšana
                 let encoded = btoa(JSON.stringify(config));
                 
-                // 2. URL-Safe Labojums: Aizstājam '/' un '+' ar '_' un '-', un noņemam "="
+                // 2. URL-Safe Labojums: PĀRBAUDĪTA REGEX SINTAKSE
+                // Aizstājam '+' un '/' ar drošiem simboliem, un noņemam "="
                 encoded = encoded.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); 
                 
                 // Ģenerējam Stremio instalācijas saiti (host/base64/manifest.json)
@@ -146,8 +147,7 @@ app.get("/", (req, res) => {
 // 5. Startējam serveri un Maršrutēšanas Labojums
 const addonInterface = builder.getInterface();
 
-// Pieprasām Express, lai izmantotu Stremio SDK maršrutētāju. 
-// Šī Express konstrukcija ir visuzticamākā, lai apstrādātu gan manifestu, gan konfigurācijas URL.
+// Visuzticamākais Express maršrutēšanas veids
 app.use(getRouter(addonInterface)); 
 
 app.listen(port, () => {
