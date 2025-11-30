@@ -17,7 +17,7 @@ const builder = new addonBuilder({
     }
 });
 
-// Definējam konfigurācijas laukus (Lietotājvārds un parole)
+// Definējam konfigurācijas laukus (Lietotājvārds un paroles)
 builder.defineConfig(() => ({
     type: "object",
     properties: {
