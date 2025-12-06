@@ -1,7 +1,8 @@
-const { addonBuilder, serveHTTP } = require("stremio-addon-sdk");
+const express = require("express");
+const { addonBuilder, getRouter } = require("stremio-addon-sdk");
 const axios = require("axios");
 
-// ---- ADDON MANIFEST ----
+// Manifest
 const manifest = {
     id: "lv.raitino90.fano_personal",
     version: "1.0.0",
@@ -16,10 +17,11 @@ const manifest = {
 
 const builder = new addonBuilder(manifest);
 
-// ---- LOGIN COOKIE ----
+// --- FANO LOGIN COOKIE ---
 async function getFanoCookie(username, password) {
     try {
         const data = `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`;
+
         const resp = await axios.post("https://fano.in/login.php", data, {
             headers: {
                 "Content-Type": "application/x-www-form-urlencoded",
@@ -34,26 +36,40 @@ async function getFanoCookie(username, password) {
 
         return raw.map(c => c.split(";")[0]).join("; ");
     } catch (e) {
-        console.log("Login error:", e.message);
+        console.error("Login error:", e);
         return null;
     }
 }
 
-// ---- STREAM HANDLER ----
-builder.defineStreamHandler(async ({ id, type, config }) => {
-
+// --- STREAM HANDLER ---
+builder.defineStreamHandler(async ({ id, config }) => {
     if (!config || !config.username || !config.password) {
         return {
-            streams: [{ title: "❗ Lūdzu ievadiet Fano datus addon konfigurācijā!", url: "" }]
+            streams: [
+                {
+                    title: "❗ Ievadi Fano datus konfigurācijā!",
+                    url: ""
+                }
+            ]
         };
     }
 
     const cookie = await getFanoCookie(config.username, config.password);
-    if (!cookie) return { streams: [{ title: "❗ Nepareizi Fano dati", url: "" }] };
+    if (!cookie) {
+        return {
+            streams: [
+                {
+                    title: "❗ Nepareizi Fano login dati!",
+                    url: ""
+                }
+            ]
+        };
+    }
 
     const imdb = id.split(":")[0];
 
     try {
+        // Search movie/series
         const search = await axios.get(`https://fano.in/search.php?search=${imdb}`, {
             headers: { cookie, "User-Agent": "Mozilla/5.0" }
         });
@@ -61,6 +77,7 @@ builder.defineStreamHandler(async ({ id, type, config }) => {
         const match = search.data.match(/href="(torrent\/[^"]*tt\d+)/i);
         if (!match) return { streams: [] };
 
+        // Open torrent page
         const torrent = await axios.get(`https://fano.in/${match[1]}`, {
             headers: { cookie, "User-Agent": "Mozilla/5.0" }
         });
@@ -69,24 +86,25 @@ builder.defineStreamHandler(async ({ id, type, config }) => {
         if (!magnet) return { streams: [] };
 
         return {
-            streams: [{
-                title: `Fano.in — ${config.username}`,
-                url: magnet[1]
-            }]
+            streams: [
+                {
+                    title: `Fano.in — ${config.username}`,
+                    url: magnet[1]
+                }
+            ]
         };
-
     } catch (e) {
-        console.log("Search error:", e.message);
+        console.error("Stream error:", e);
         return { streams: [] };
     }
 });
 
-// ---- HTML CONFIG PAGE ----
+// --- CONFIG PAGE HTML ---
 const htmlPage = `
 <!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Fano Addon</title>
 <style>
-body { background:#111; font-family:sans-serif; color:#fff; display:flex; justify-content:center; align-items:center; height:100vh; }
+body { background:#111; color:#fff; display:flex; justify-content:center; align-items:center; height:100vh; font-family:sans-serif; }
 .box { background:#222; padding:25px; border-radius:10px; width:320px; text-align:center; }
 input { width:100%; padding:10px; margin:8px 0; border:none; border-radius:5px; }
 button { width:100%; padding:12px; border:none; border-radius:5px; margin-top:10px; background:#7d5fff; color:white; font-weight:bold; cursor:pointer; }
@@ -94,7 +112,7 @@ button { width:100%; padding:12px; border:none; border-radius:5px; margin-top:10
 <body>
 <div class="box">
 <h2>Fano.in Addon</h2>
-<p>Ievadiet Fano login datus:</p>
+<p>Ievadi Fano login datus:</p>
 <input id="u" placeholder="Lietotājvārds">
 <input id="p" type="password" placeholder="Parole">
 <button onclick="go()">Instalēt Stremio</button>
@@ -103,7 +121,7 @@ button { width:100%; padding:12px; border:none; border-radius:5px; margin-top:10
 function go() {
     const u = document.getElementById("u").value;
     const p = document.getElementById("p").value;
-    if(!u || !p) return alert("Ievadi abus laukus!");
+    if (!u || !p) return alert("Ievadi abus laukus!");
 
     let cfg = btoa(JSON.stringify({username:u, password:p}))
         .replace(/\\+/g,"-")
@@ -116,9 +134,16 @@ function go() {
 </body></html>
 `;
 
-const addonInterface = builder.getInterface();
+// --- EXPRESS SERVER ---
+const app = express();
 
-serveHTTP(addonInterface, {
-    port: process.env.PORT || 7000,
-    static: htmlPage
+app.get("/", (req, res) => res.send(htmlPage));
+
+const addonRouter = getRouter(builder.getInterface());
+app.use("/", addonRouter);
+
+// Start server
+const PORT = process.env.PORT || 7000;
+app.listen(PORT, () => {
+    console.log("Addon running on http://localhost:" + PORT);
 });
