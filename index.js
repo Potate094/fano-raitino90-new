@@ -280,6 +280,19 @@ function go() {
 
 // ========== ROUTES ==========
 
+// Endpoint to check credentials validity (AJAX)
+app.post("/check-credentials", express.json(), async (req, res) => {
+    const { username, password } = req.body || {};
+    if (!username || !password) return res.json({ ok: false, error: "Nav lietotājvārda vai paroles" });
+    try {
+        const cookie = await getFanoCookie(username, password);
+        if (cookie) return res.json({ ok: true });
+        return res.json({ ok: false, error: "Nepareizs lietotājvārds vai parole" });
+    } catch (e) {
+        return res.json({ ok: false, error: "Kļūda: " + e.message });
+    }
+});
+
 // Healthcheck priekš Render / uptime monitoriem
 app.get("/health", (req, res) => {
     res.json({ status: "ok", ts: Date.now() });
@@ -289,18 +302,33 @@ app.get("/health", (req, res) => {
 const apiLimiter = rateLimit({ windowMs: 10 * 1000, max: 100 });
 app.use(apiLimiter);
 
-// HTML konfigurators
-app.get("/", (req, res) => res.send(htmlPage));
+
+// HTML konfigurators ar AJAX credential check
+app.get("/", (req, res) => res.send(htmlPageV2));
 
 // Manifest BEZ config (piemēram testiem vai default view)
 // Svarīgi: pirms "/:config" route!
 app.get("/manifest.json", (req, res) => res.json(manifest));
 
-// Stremio router ar config parametru
-// Piezīme: getRouter pats dekodē :config kā base64url → config objektu handleriem
-app.use("/:config", getRouter(builder.getInterface()));
 
-// ==== START SERVER ====
+// Serve HTML Stremio install page if /:config/manifest.json is opened in a browser
+app.get('/:config/manifest.json', (req, res, next) => {
+    // If Accept header prefers HTML, show install page
+    const accept = req.headers.accept || '';
+    if (accept.includes('text/html')) {
+        const config = req.params.config;
+        const stremioUrl = `${req.protocol}://${req.get('host')}/${config}/manifest.json`;
+        res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Stremio Addon</title></head><body style="font-family:sans-serif;background:#111;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;"><div style="background:#1c1c1c;padding:30px;border-radius:10px;box-shadow:0 0 25px rgba(0,0,0,0.5);text-align:center;"><h2>Stremio Addon</h2><p>Spied uz pogas, lai pievienotu šo papildinājumu Stremio:</p><a href="stremio://addon/manifest.json?url=${encodeURIComponent(stremioUrl)}" style="display:inline-block;padding:15px 30px;background:#6b4bff;color:#fff;border-radius:6px;font-size:18px;text-decoration:none;font-weight:bold;margin-top:20px;">Pievienot Stremio</a><p style="margin-top:20px;word-break:break-all;">Vai izmanto šo saiti:<br><a href="${stremioUrl}" style="color:#7f9dff;">${stremioUrl}</a></p></div></body></html>`);
+        return;
+    }
+    next();
+});
+
+// Stremio router ar config parametru (API/json)
+// Piezīme: getRouter pats dekodē :config kā base64url → config objektu handleriem
+app.use('/:config', getRouter(builder.getInterface()));
+
+const htmlPageV2 = `
 // Serveris startējas tikai tad, ja index.js palaists tieši, nevis require-ots.
 if (require.main === module) {
     const PORT = process.env.PORT || 7000;
