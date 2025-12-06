@@ -9,8 +9,6 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    env:
-      TEST_BASE_URL: "${{ secrets.TEST_BASE_URL }}"
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node
@@ -23,11 +21,5 @@ jobs:
         run: npm run check
       - name: Unit tests
         run: npm test
-      - name: Integration smoke (optional)
-        run: |
-          if [ -z "$TEST_BASE_URL" ]; then
-            echo "TEST_BASE_URL not set — skipping integration smoke tests"
-            exit 0
-          fi
-          echo "Running integration smoke tests against $TEST_BASE_URL"
-          BASE=$TEST_BASE_URL node test.js
+      # Integration smoke tests moved to .github/workflows/integration.yml
+      # This main CI job runs lint/checks and unit tests only to keep editor diagnostics clean.

@@ -1,0 +1,26 @@
+name: Integration
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - name: Install dependencies
+        run: npm ci
+      - name: Run integration smoke (if TEST_BASE_URL secret set)
+        run: |
+          if [ -z "${{ secrets.TEST_BASE_URL }}" ]; then
+            echo "TEST_BASE_URL secret not set — skipping integration tests"
+            exit 0
+          fi
+          echo "Running integration smoke tests against ${{ secrets.TEST_BASE_URL }}"
+          BASE=${{ secrets.TEST_BASE_URL }} node test.js
