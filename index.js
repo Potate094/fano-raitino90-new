@@ -308,3 +308,12 @@ if (require.main === module) {
     const PORT = process.env.PORT || 7000;
     app.listen(PORT, () => console.log("Fano addon running on port", PORT));
 }
+
+// Export internals for testing
+module.exports = {
+    app,
+    manifest,
+    builder,
+    getFanoCookie,
+    getCacheKey
+};

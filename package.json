@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "test": "jest tests --runInBand",
-    "check": "node --check index.js test.js"
+    "check": "node --check index.js test.js",
+    "runtest": "node test.js | tee test-results.txt"
   },
   "dependencies": {
     "stremio-addon-sdk": "1.6.10",

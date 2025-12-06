@@ -10,6 +10,28 @@ const path = require("path");
 
 // Integration base URL — prefer environment variables so tests can target any deployment.
 const BASE = process.env.BASE || process.env.TEST_BASE_URL || "https://fano-raitino90-new.onrender.com";
+
+// Capture console output so we can persist a test-results.txt after the run
+const _origConsoleLog = console.log.bind(console);
+const _output = [];
+console.log = (...args) => {
+    try {
+        _output.push(args.map(a => (typeof a === 'string' ? a : JSON.stringify(a))).join(' '));
+    } catch (e) {
+        _output.push(String(args));
+    }
+    _origConsoleLog(...args);
+};
+
+function persistResults() {
+    try {
+        const header = `Results for ${new Date().toISOString()} (BASE=${BASE})\n`;
+        fs.writeFileSync('test-results.txt', header + _output.join('\n') + '\n');
+        _origConsoleLog('Wrote test-results.txt');
+    } catch (e) {
+        _origConsoleLog('Failed to write test-results.txt:', e.message);
+    }
+}
 // {"username":"TestUser","password":"NotReal"}
 const CONFIG_VALID = "eyJ1c2VybmFtZSI6IlRlc3RVc2VyIiwicGFzc3dvcmQiOiJOb3RSZWFsIn0";
 const CONFIG_INVALID = "INVALID";
@@ -67,12 +89,25 @@ function randomString(len) {
         if (!fileExists("package.json")) throw new Error("package.json nav");
     });
 
+    await test(`BASE ${BASE} reachable`, async () => {
+        const res = await fetch(BASE);
+        if (!res.ok) throw new Error(`BASE not reachable: HTTP ${res.status}`);
+    });
+
     await test("index.js izskatās pēc Stremio addona", () => {
         const size = fs.statSync("index.js").size;
         if (size < 500) throw new Error("index.js par mazu: " + size + " baiti");
         const content = fs.readFileSync("index.js", "utf8");
         if (!content.includes("addonBuilder")) throw new Error("index.js: nav addonBuilder");
         if (!content.includes("defineStreamHandler")) throw new Error("index.js: nav defineStreamHandler");
+    });
+
+    await test('index.js require and helpers available', () => {
+        const idx = require('./index.js');
+        if (!idx) throw new Error('require index.js returned falsy');
+        if (typeof idx.getCacheKey !== 'function') throw new Error('getCacheKey not exported');
+        const k = idx.getCacheKey('a','b');
+        if (!/^[0-9a-f]{64}$/.test(k)) throw new Error('getCacheKey did not return sha256 hex');
     });
 
     // -----------------------------------------------------------------
