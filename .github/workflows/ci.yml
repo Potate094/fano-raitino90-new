@@ -22,6 +22,7 @@ jobs:
       - name: Unit tests
         run: npm test
       - name: Integration smoke (optional)
-        run: node test.js
-        env:
-          BASE: ${{ secrets.TEST_BASE_URL }}
+        if: ${{ secrets.TEST_BASE_URL != '' }}
+        run: |
+          echo "Running integration smoke tests against $BASE"
+          BASE=${{ secrets.TEST_BASE_URL }} node test.js

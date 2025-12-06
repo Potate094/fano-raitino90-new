@@ -8,7 +8,8 @@
 const fs = require("fs");
 const path = require("path");
 
-const BASE = "https://fano-raitino90-new.onrender.com";
+// Integration base URL — prefer environment variables so tests can target any deployment.
+const BASE = process.env.BASE || process.env.TEST_BASE_URL || "https://fano-raitino90-new.onrender.com";
 // {"username":"TestUser","password":"NotReal"}
 const CONFIG_VALID = "eyJ1c2VybmFtZSI6IlRlc3RVc2VyIiwicGFzc3dvcmQiOiJOb3RSZWFsIn0";
 const CONFIG_INVALID = "INVALID";
