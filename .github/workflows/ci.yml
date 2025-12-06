@@ -9,6 +9,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      TEST_BASE_URL: "${{ secrets.TEST_BASE_URL }}"
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node
@@ -22,8 +24,10 @@ jobs:
       - name: Unit tests
         run: npm test
       - name: Integration smoke (optional)
-        if: ${{ secrets.TEST_BASE_URL }}
         run: |
-          BASE=${{ secrets.TEST_BASE_URL }}
-          echo "Running integration smoke tests against $BASE"
-          node test.js
+          if [ -z "$TEST_BASE_URL" ]; then
+            echo "TEST_BASE_URL not set — skipping integration smoke tests"
+            exit 0
+          fi
+          echo "Running integration smoke tests against $TEST_BASE_URL"
+          BASE=$TEST_BASE_URL node test.js
