@@ -339,6 +339,17 @@ function randomString(len) {
         if (!json.id) throw new Error("Install manifest INVALID config: trūkst id");
     });
 
+    await test("Install page (Accept: text/html) shows install button", async () => {
+        // Request the install path with HTML accept to ensure user-friendly page is returned
+        const installUrl = `${BASE}/${CONFIG_VALID}/manifest.json`;
+        const res = await fetch(installUrl, { headers: { Accept: 'text/html' } });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const text = await res.text();
+        if (!text.includes('Pievienot Stremio') && !text.includes('Add to Stremio')) {
+            throw new Error('Install HTML page not returned or missing install button');
+        }
+    });
+
     // -----------------------------------------------------------------
     // 10) LOGIN SIMULATION — VALID/INVALID CONFIG
     // -----------------------------------------------------------------
@@ -358,6 +369,40 @@ function randomString(len) {
         const json = await res.json();
         if (!("streams" in json)) throw new Error("Trūkst 'streams'");
         if (json.streams.length !== 0) throw new Error("INVALID config nedrīkst atgriezt streamus!");
+    });
+
+    // Additional explicit credential-check endpoint tests (if server exposes it)
+    await test("Credential check endpoint: valid creds accepted", async () => {
+        const decoded = JSON.parse(decodeBase64Url(CONFIG_VALID));
+        const res = await fetch(`${BASE}/check-credentials`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: decoded.username, password: decoded.password })
+        });
+        if (res.status === 404) {
+            // Endpoint not present on this deployment — skip this check
+            console.log('   → /check-credentials not present (HTTP 404), skipping credential endpoint test');
+            return;
+        }
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const j = await res.json();
+        if (!j.ok) throw new Error('Credential endpoint did not accept valid creds: ' + (j.error || JSON.stringify(j)));
+    });
+
+    await test("Credential check endpoint: invalid creds rejected", async () => {
+        // try clearly invalid creds
+        const res = await fetch(`${BASE}/check-credentials`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: 'no-such-user-xyz', password: 'wrong-pass' })
+        });
+        if (res.status === 404) {
+            console.log('   → /check-credentials not present (HTTP 404), skipping credential endpoint test');
+            return;
+        }
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const j = await res.json();
+        if (j.ok) throw new Error('Credential endpoint accepted invalid creds');
     });
 
     // -----------------------------------------------------------------
