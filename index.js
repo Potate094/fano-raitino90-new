@@ -27,14 +27,84 @@ const manifest = {
 const builder = new addonBuilder(manifest);
 
 // ========== LOGGER ==========
+
 const logger = winston.createLogger({
-    level: process.env.LOG_LEVEL || 'info',
-    format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.printf(({ timestamp, level, message }) => `${timestamp} [${level}] - ${message}`)
-    ),
-    transports: [new winston.transports.Console()]
+        level: process.env.LOG_LEVEL || 'info',
+        format: winston.format.combine(
+                winston.format.timestamp(),
+                winston.format.printf(({ timestamp, level, message }) => `${timestamp} [${level}] - ${message}`)
+        ),
+        transports: [new winston.transports.Console()]
 });
+
+// HTML konfigurators ar AJAX credential check
+const htmlPageV2 = `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Fano.in Addon</title>
+<style>
+body { font-family:sans-serif; background:#111; color:#fff; height:100vh; margin:0; display:flex; justify-content:center; align-items:center; }
+.box { background:#1c1c1c; padding:25px; border-radius:10px; width:350px; box-shadow:0 0 25px rgba(0,0,0,0.5); }
+input, button { width:100%; padding:12px; margin-top:10px; border-radius:6px; border:0; box-sizing:border-box; }
+input { background:#2b2b2b; color:white; }
+button { background:#6b4bff; color:white; font-weight:bold; cursor:pointer; transition:0.2s transform, 0.2s opacity; }
+button:hover { transform:translateY(-1px); opacity:0.9; }
+#out a { color:#7f9dff; text-decoration:none; }
+#out a:hover { text-decoration:underline; }
+.status { margin-top:10px; font-size:15px; min-height:22px; }
+</style>
+</head>
+<body>
+<div class="box">
+<h2>Fano.in Addon</h2>
+<p>Ievadiet datus, lai ģenerētu Stremio instalācijas saiti.</p>
+
+<input id="u" placeholder="Lietotājvārds">
+<input id="p" placeholder="Parole" type="password">
+
+<button onclick="go()">Ģenerēt saiti</button>
+<div class="status" id="status"></div>
+<p id="out" style="word-break:break-all; margin-top:15px;"></p>
+</div>
+
+<script>
+async function checkCreds(u, p) {
+    const status = document.getElementById('status');
+    status.textContent = 'Pārbauda...';
+    try {
+        const r = await fetch('/check-credentials', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: u, password: p })
+        });
+        const data = await r.json();
+        if (data.ok) status.textContent = '✅ Pareizs lietotājvārds un parole!';
+        else status.textContent = '❌ ' + (data.error || 'Nepareizi dati');
+    } catch (e) {
+        status.textContent = '❌ Kļūda: ' + e.message;
+    }
+}
+
+function go() {
+        const u = document.getElementById('u').value.trim();
+        const p = document.getElementById('p').value.trim();
+        if (!u || !p) return alert("Ievadiet abus laukus!");
+        checkCreds(u, p);
+        const payload = { username: u, password: p };
+        let cfg = btoa(JSON.stringify(payload))
+                             .replace(/\+/g,'-')
+                             .replace(/\//g,'_')
+                             .replace(/=+$/,'');
+        const url = window.location.origin + "/" + cfg + "/manifest.json";
+        document.getElementById("out").innerHTML =
+            'Instalācijas saite:<br><br><a href="'+url+'" target="_blank">'+url+'</a>';
+}
+</script>
+</body>
+</html>
+`;
 
 function log(...args) {
     const msg = args.map(a => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
@@ -328,7 +398,6 @@ app.get('/:config/manifest.json', (req, res, next) => {
 // Piezīme: getRouter pats dekodē :config kā base64url → config objektu handleriem
 app.use('/:config', getRouter(builder.getInterface()));
 
-const htmlPageV2 = `
 // Serveris startējas tikai tad, ja index.js palaists tieši, nevis require-ots.
 if (require.main === module) {
     const PORT = process.env.PORT || 7000;
