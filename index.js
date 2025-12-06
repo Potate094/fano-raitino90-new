@@ -1,5 +1,6 @@
 const { addonBuilder, getRouter } = require("stremio-addon-sdk");
 const axios = require("axios");
+const crypto = require("crypto");
 const express = require("express");
 const app = express();
 
@@ -29,7 +30,10 @@ const COOKIE_TTL_MS = 10 * 60 * 1000; // 10 min
 const cookieCache = new Map(); // key: username|password, value: { cookie, expiresAt }
 
 function getCacheKey(username, password) {
-    return `${username}|${password}`;
+    // Hash username|password so we don't keep raw creds as map keys
+    const h = crypto.createHash("sha256");
+    h.update(`${username}|${password}`);
+    return h.digest("hex");
 }
 
 function getCachedCookie(username, password) {
@@ -82,15 +86,27 @@ async function getFanoCookie(username, password) {
             validateStatus: () => true
         });
 
-        const cookies = res.headers["set-cookie"];
-        if (!cookies || !cookies.length) {
-            log("Login failed: no cookies set");
+        const setCookieHeader = res.headers["set-cookie"];
+        if (!setCookieHeader) {
+            log("Login failed: no set-cookie header returned");
             return null;
         }
 
-        const cookie = cookies
-            .map(c => c.split(";")[0])
+        const cookiesArr = Array.isArray(setCookieHeader) ? setCookieHeader : [setCookieHeader];
+
+        // Extract only the "name=value" from each Set-Cookie entry and join
+        const cookie = cookiesArr
+            .map(c => {
+                const m = String(c).match(/^[^;]+/);
+                return m ? m[0] : null;
+            })
+            .filter(Boolean)
             .join("; ");
+
+        if (!cookie) {
+            log("Login failed: could not parse cookies from header");
+            return null;
+        }
 
         setCachedCookie(username, password, cookie);
         log(`Login success for user ${username}, cookie cached`);
@@ -270,6 +286,9 @@ app.get("/manifest.json", (req, res) => res.json(manifest));
 // Piezīme: getRouter pats dekodē :config kā base64url → config objektu handleriem
 app.use("/:config", getRouter(builder.getInterface()));
 
-// ========== START SERVER ==========
-const PORT = process.env.PORT || 7000;
-app.listen(PORT, () => log("Fano addon running on port", PORT));
+// ==== START SERVER ====
+// Serveris startējas tikai tad, ja index.js palaists tieši, nevis require-ots.
+if (require.main === module) {
+    const PORT = process.env.PORT || 7000;
+    app.listen(PORT, () => console.log("Fano addon running on port", PORT));
+}
