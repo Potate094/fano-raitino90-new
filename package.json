@@ -4,14 +4,24 @@
   "description": "Personal Fano.in Stremio Addon",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "jest tests --runInBand",
+    "check": "node --check index.js test.js"
   },
   "dependencies": {
     "stremio-addon-sdk": "1.6.10",
     "axios": "1.7.7",
-    "express": "^4.21.1"
+    "express": "^4.21.1",
+    "ioredis": "^5.3.2",
+    "tough-cookie": "^4.1.2",
+    "winston": "^3.9.0",
+    "express-rate-limit": "^6.8.0",
+    "joi": "^17.9.2"
   },
   "engines": {
     "node": ">=18"
+  },
+  "devDependencies": {
+    "jest": "^29.6.1"
   }
 }

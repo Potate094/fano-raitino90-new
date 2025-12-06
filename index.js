@@ -1,8 +1,17 @@
 const { addonBuilder, getRouter } = require("stremio-addon-sdk");
 const axios = require("axios");
+const { /* wrapper removed */ } = require('axios-cookiejar-support');
+const { /* CookieJar not used to avoid extra dependency */ } = require('tough-cookie');
 const crypto = require("crypto");
 const express = require("express");
 const app = express();
+const Redis = require('ioredis');
+const winston = require('winston');
+const rateLimit = require('express-rate-limit');
+const Joi = require('joi');
+const { extractImdbId, extractTorrentPath, extractMagnet } = require('./helpers');
+
+// Note: cookie-jar support removed to avoid extra dependency in this environment.
 
 // ========== MANIFEST ==========
 const manifest = {
@@ -19,25 +28,50 @@ const manifest = {
 
 const builder = new addonBuilder(manifest);
 
-// ========== SIMPLE LOGGER ==========
+// ========== LOGGER ==========
+const logger = winston.createLogger({
+    level: process.env.LOG_LEVEL || 'info',
+    format: winston.format.combine(
+        winston.format.timestamp(),
+        winston.format.printf(({ timestamp, level, message }) => `${timestamp} [${level}] - ${message}`)
+    ),
+    transports: [new winston.transports.Console()]
+});
+
 function log(...args) {
-    console.log(new Date().toISOString(), "-", ...args);
+    const msg = args.map(a => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
+    logger.info(msg);
 }
 
-// ========== COOKIE CACHE (IN-MEMORY) ==========
-// Cache per user+password (hash varētu, bet šeit pietiek raw kombinācija atmiņā)
+// ========== COOKIE CACHE (Redis optional, fallback in-memory) ==========
 const COOKIE_TTL_MS = 10 * 60 * 1000; // 10 min
-const cookieCache = new Map(); // key: username|password, value: { cookie, expiresAt }
+const cookieCache = new Map(); // fallback in-memory cache
+
+let redisClient = null;
+if (process.env.REDIS_URL) {
+    redisClient = new Redis(process.env.REDIS_URL);
+    redisClient.on('error', (e) => logger.warn('Redis error: ' + e.message));
+    logger.info('Redis client initialized');
+}
 
 function getCacheKey(username, password) {
-    // Hash username|password so we don't keep raw creds as map keys
     const h = crypto.createHash("sha256");
     h.update(`${username}|${password}`);
     return h.digest("hex");
 }
 
-function getCachedCookie(username, password) {
+async function getCachedCookie(username, password) {
     const key = getCacheKey(username, password);
+    if (redisClient) {
+        try {
+            const val = await redisClient.get(key);
+            if (!val) return null;
+            const parsed = JSON.parse(val);
+            return parsed.cookie || null;
+        } catch (e) {
+            logger.warn('Redis get failed: ' + e.message);
+        }
+    }
     const entry = cookieCache.get(key);
     if (!entry) return null;
     if (Date.now() > entry.expiresAt) {
@@ -47,8 +81,16 @@ function getCachedCookie(username, password) {
     return entry.cookie;
 }
 
-function setCachedCookie(username, password, cookie) {
+async function setCachedCookie(username, password, cookie) {
     const key = getCacheKey(username, password);
+    if (redisClient) {
+        try {
+            await redisClient.set(key, JSON.stringify({ cookie }), 'PX', COOKIE_TTL_MS);
+            return;
+        } catch (e) {
+            logger.warn('Redis set failed: ' + e.message);
+        }
+    }
     cookieCache.set(key, {
         cookie,
         expiresAt: Date.now() + COOKIE_TTL_MS
@@ -66,8 +108,8 @@ const http = axios.create({
 
 // ========== LOGIN COOKIE ==========
 async function getFanoCookie(username, password) {
-    // 1) mēģinām no cache
-    const cached = getCachedCookie(username, password);
+    // try cache first
+    const cached = await getCachedCookie(username, password);
     if (cached) {
         log(`Using cached cookie for user ${username}`);
         return cached;
@@ -79,9 +121,7 @@ async function getFanoCookie(username, password) {
         const body = `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`;
 
         const res = await http.post("https://fano.in/login.php", body, {
-            headers: {
-                "Content-Type": "application/x-www-form-urlencoded"
-            },
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
             maxRedirects: 0,
             validateStatus: () => true
         });
@@ -93,8 +133,6 @@ async function getFanoCookie(username, password) {
         }
 
         const cookiesArr = Array.isArray(setCookieHeader) ? setCookieHeader : [setCookieHeader];
-
-        // Extract only the "name=value" from each Set-Cookie entry and join
         const cookie = cookiesArr
             .map(c => {
                 const m = String(c).match(/^[^;]+/);
@@ -108,42 +146,16 @@ async function getFanoCookie(username, password) {
             return null;
         }
 
-        setCachedCookie(username, password, cookie);
+        await setCachedCookie(username, password, cookie);
         log(`Login success for user ${username}, cookie cached`);
         return cookie;
     } catch (err) {
-        log("Login error:", err.message);
+        log('Login error: ' + err.message);
         return null;
     }
 }
 
-// ========== HELPERS ==========
-
-// Vienkārša IMDb ID validācija, lai nenāktu random garbage
-function extractImdbId(id) {
-    // Stremio sērijām bieži ir formāts: tt1234567:1:2
-    const imdbId = id.split(":")[0];
-    if (!/^tt\d{5,10}$/.test(imdbId)) {
-        return null;
-    }
-    return imdbId;
-}
-
-// Drošāks regex priekš torrent linka
-function extractTorrentPath(html, imdbId) {
-    // meklējam "torrent/...ttxxxxxx" ar ' vai " un ignorē case
-    const re = new RegExp(`href=["'](torrent\\/[^"']*${imdbId}[^"']*)["']`, "i");
-    const match = html.match(re);
-    return match ? match[1] : null;
-}
-
-// Drošāks regex priekš magnet linka
-function extractMagnet(html) {
-    // Atļaujam gan single, gan double quotes, un papildus parametri
-    const re = /href=["'](magnet:\?xt=urn:btih:[^"']+)["']/i;
-    const match = html.match(re);
-    return match ? match[1] : null;
-}
+// helpers moved to ./helpers.js
 
 // ========== STREAM HANDLER ==========
 builder.defineStreamHandler(async ({ id, config }) => {
@@ -274,6 +286,10 @@ function go() {
 app.get("/health", (req, res) => {
     res.json({ status: "ok", ts: Date.now() });
 });
+
+// Basic rate limiter for all requests
+const apiLimiter = rateLimit({ windowMs: 10 * 1000, max: 100 });
+app.use(apiLimiter);
 
 // HTML konfigurators
 app.get("/", (req, res) => res.send(htmlPage));
