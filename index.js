@@ -1,4 +1,4 @@
-// index.js — Rediģēta, stabīla versija
+// index.js — Rediģēta, stabīlas versija
 const { addonBuilder, getRouter } = require("stremio-addon-sdk");
 const axios = require("axios");
 const express = require("express");
