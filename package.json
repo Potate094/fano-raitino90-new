@@ -1,149 +1,20 @@
-const express = require("express");
-const { addonBuilder, getRouter } = require("stremio-addon-sdk");
-const axios = require("axios");
-
-// Manifest
-const manifest = {
-    id: "lv.raitino90.fano_personal",
-    version: "1.0.0",
-    name: "Fano.in Personal",
-    description: "Privāts Fano.in addons ar lietotāja autorizāciju.",
-    resources: ["stream"],
-    types: ["movie", "series"],
-    idPrefixes: ["tt"],
-    catalogs: [],
-    behaviorHints: { configurable: true }
-};
-
-const builder = new addonBuilder(manifest);
-
-// --- FANO LOGIN COOKIE ---
-async function getFanoCookie(username, password) {
-    try {
-        const data = `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`;
-
-        const resp = await axios.post("https://fano.in/login.php", data, {
-            headers: {
-                "Content-Type": "application/x-www-form-urlencoded",
-                "User-Agent": "Mozilla/5.0"
-            },
-            maxRedirects: 0,
-            validateStatus: () => true
-        });
-
-        const raw = resp.headers["set-cookie"];
-        if (!raw) return null;
-
-        return raw.map(c => c.split(";")[0]).join("; ");
-    } catch (e) {
-        console.error("Login error:", e);
-        return null;
-    }
+{
+  "name": "fano-stremio-addon",
+  "version": "1.0.0",
+  "description": "Personal Fano.in Stremio Addon",
+  "description": "Fano.in Stremio Addon",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "stremio-addon-sdk": "2.0.0",
+    "axios": "1.7.7"
+    "stremio-addon-sdk": "1.6.10",
+    "axios": "1.7.7",
+    "express": "^4.21.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
 }
-
-// --- STREAM HANDLER ---
-builder.defineStreamHandler(async ({ id, config }) => {
-    if (!config || !config.username || !config.password) {
-        return {
-            streams: [
-                {
-                    title: "❗ Ievadi Fano datus konfigurācijā!",
-                    url: ""
-                }
-            ]
-        };
-    }
-
-    const cookie = await getFanoCookie(config.username, config.password);
-    if (!cookie) {
-        return {
-            streams: [
-                {
-                    title: "❗ Nepareizi Fano login dati!",
-                    url: ""
-                }
-            ]
-        };
-    }
-
-    const imdb = id.split(":")[0];
-
-    try {
-        // Search movie/series
-        const search = await axios.get(`https://fano.in/search.php?search=${imdb}`, {
-            headers: { cookie, "User-Agent": "Mozilla/5.0" }
-        });
-
-        const match = search.data.match(/href="(torrent\/[^"]*tt\d+)/i);
-        if (!match) return { streams: [] };
-
-        // Open torrent page
-        const torrent = await axios.get(`https://fano.in/${match[1]}`, {
-            headers: { cookie, "User-Agent": "Mozilla/5.0" }
-        });
-
-        const magnet = torrent.data.match(/href="(magnet:\?xt=urn:btih:[^"]+)/);
-        if (!magnet) return { streams: [] };
-
-        return {
-            streams: [
-                {
-                    title: `Fano.in — ${config.username}`,
-                    url: magnet[1]
-                }
-            ]
-        };
-    } catch (e) {
-        console.error("Stream error:", e);
-        return { streams: [] };
-    }
-});
-
-// --- CONFIG PAGE HTML ---
-const htmlPage = `
-<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Fano Addon</title>
-<style>
-body { background:#111; color:#fff; display:flex; justify-content:center; align-items:center; height:100vh; font-family:sans-serif; }
-.box { background:#222; padding:25px; border-radius:10px; width:320px; text-align:center; }
-input { width:100%; padding:10px; margin:8px 0; border:none; border-radius:5px; }
-button { width:100%; padding:12px; border:none; border-radius:5px; margin-top:10px; background:#7d5fff; color:white; font-weight:bold; cursor:pointer; }
-</style></head>
-<body>
-<div class="box">
-<h2>Fano.in Addon</h2>
-<p>Ievadi Fano login datus:</p>
-<input id="u" placeholder="Lietotājvārds">
-<input id="p" type="password" placeholder="Parole">
-<button onclick="go()">Instalēt Stremio</button>
-</div>
-<script>
-function go() {
-    const u = document.getElementById("u").value;
-    const p = document.getElementById("p").value;
-    if (!u || !p) return alert("Ievadi abus laukus!");
-
-    let cfg = btoa(JSON.stringify({username:u, password:p}))
-        .replace(/\\+/g,"-")
-        .replace(/\\//g,"_")
-        .replace(/=+$/,"");
-
-    location.href = "stremio://" + location.host + "/" + cfg + "/manifest.json";
-}
-</script>
-</body></html>
-`;
-
-// --- EXPRESS SERVER ---
-const app = express();
-
-app.get("/", (req, res) => res.send(htmlPage));
-
-const addonRouter = getRouter(builder.getInterface());
-app.use("/", addonRouter);
-
-// Start server
-const PORT = process.env.PORT || 7000;
-app.listen(PORT, () => {
-    console.log("Addon running on http://localhost:" + PORT);
-});
