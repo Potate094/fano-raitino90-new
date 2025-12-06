@@ -8,6 +8,8 @@ on:
 jobs:
   integration:
     runs-on: ubuntu-latest
+    env:
+      TEST_BASE_URL: ${{ secrets.TEST_BASE_URL || '' }} # Define at job level for linter
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node
@@ -16,11 +18,11 @@ jobs:
           node-version: 18
       - name: Install dependencies
         run: npm ci
-      - name: Run integration smoke (if TEST_BASE_URL secret set)
+      - name: Run integration smoke (if TEST_BASE_URL is set)
         run: |
-          if [ -z "${{ secrets.TEST_BASE_URL }}" ]; then
-            echo "TEST_BASE_URL secret not set — skipping integration tests"
+          if [ -z "$TEST_BASE_URL" ]; then
+            echo "TEST_BASE_URL is not set or empty. Skipping integration tests."
             exit 0
           fi
-          echo "Running integration smoke tests against ${{ secrets.TEST_BASE_URL }}"
-          BASE=${{ secrets.TEST_BASE_URL }} node test.js
+          echo "Running integration smoke tests against $TEST_BASE_URL"
+          BASE=$TEST_BASE_URL node test.js

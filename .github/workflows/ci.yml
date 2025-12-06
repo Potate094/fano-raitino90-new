@@ -23,3 +23,4 @@ jobs:
         run: npm test
       # Integration smoke tests moved to .github/workflows/integration.yml
       # This main CI job runs lint/checks and unit tests only to keep editor diagnostics clean.
+        # Integration smoke tests removed from CI to avoid linter/editor errors with secrets
