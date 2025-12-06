@@ -1,7 +1,5 @@
 const { addonBuilder, getRouter } = require("stremio-addon-sdk");
 const axios = require("axios");
-const { /* wrapper removed */ } = require('axios-cookiejar-support');
-const { /* CookieJar not used to avoid extra dependency */ } = require('tough-cookie');
 const crypto = require("crypto");
 const express = require("express");
 const app = express();
