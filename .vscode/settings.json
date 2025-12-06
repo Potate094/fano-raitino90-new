@@ -1,0 +1,6 @@
+{
+  // Use official GitHub Actions schema for workflow files to reduce editor YAML warnings
+  "yaml.schemas": {
+    "https://json.schemastore.org/github-workflow.json": ".github/workflows/*"
+  }
+}
