@@ -3,4 +3,10 @@
   "yaml.schemas": {
     "https://json.schemastore.org/github-workflow.json": ".github/workflows/*"
   }
+  ,
+  // Disable YAML validation in workspace to avoid false-positive diagnostics from editors
+  "yaml.validate": false,
+  "yaml.lint": {
+    "enable": false
+  }
 }
