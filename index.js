@@ -1,29 +1,28 @@
-const { addonBuilder, serveHTTP } = require("stremio-addon-sdk");
+const { addonBuilder, getRouter } = require("stremio-addon-sdk");
 const axios = require("axios");
+const express = require("express");
+const app = express();
 
-// ===== MANIFEST =====
+// ==== MANIFEST ====
 const manifest = {
     id: "lv.raitino90.fano_personal",
     version: "1.0.0",
     name: "Fano.in Personal",
-    description: "Fano.in straumēšana ar personalizētu login autorizāciju.",
+    description: "Privāts Fano.in addons ar lietotāja autorizāciju.",
     resources: ["stream"],
     types: ["movie", "series"],
     idPrefixes: ["tt"],
     catalogs: [],
-    behaviorHints: {
-        configurable: true,
-        configurationRequired: true
-    }
+    behaviorHints: { configurable: true }
 };
 
 const builder = new addonBuilder(manifest);
 
-// ===== HELPERS =====
+// ==== LOGIN COOKIE ====
 async function getFanoCookie(username, password) {
     try {
         const body = `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`;
-        const login = await axios.post("https://fano.in/login.php", body, {
+        const res = await axios.post("https://fano.in/login.php", body, {
             headers: {
                 "Content-Type": "application/x-www-form-urlencoded",
                 "User-Agent": "Mozilla/5.0"
@@ -32,41 +31,35 @@ async function getFanoCookie(username, password) {
             validateStatus: () => true
         });
 
-        const cookies = login.headers["set-cookie"];
+        const cookies = res.headers["set-cookie"];
         if (!cookies) return null;
 
         return cookies.map(c => c.split(";")[0]).join("; ");
-    } catch (e) {
-        console.log("Login error:", e.message);
+    } catch (err) {
+        console.log("Login error:", err.message);
         return null;
     }
 }
 
-// ===== STREAM HANDLER =====
+// ==== STREAM HANDLER ====
 builder.defineStreamHandler(async ({ id, config }) => {
+    if (!config || !config.username || !config.password)
+        return { streams: [] };
 
-    if (!config || !config.username || !config.password) {
-        return {
-            streams: []
-        };
-    }
+    const cookie = await getFanoCookie(config.username, config.password);
+    if (!cookie) return { streams: [] };
 
     const imdbId = id.split(":")[0];
-    const cookie = await getFanoCookie(config.username, config.password);
-
-    if (!cookie) {
-        return { streams: [] };
-    }
 
     try {
         const search = await axios.get(`https://fano.in/search.php?search=${imdbId}`, {
             headers: { cookie, "User-Agent": "Mozilla/5.0" }
         });
 
-        const linkMatch = search.data.match(/href="(torrent\/[^"]*tt\d+)/i);
-        if (!linkMatch) return { streams: [] };
+        const match = search.data.match(/href="(torrent\/[^"]*tt\d+)/i);
+        if (!match) return { streams: [] };
 
-        const torrentPage = await axios.get(`https://fano.in/${linkMatch[1]}`, {
+        const torrentPage = await axios.get(`https://fano.in/${match[1]}`, {
             headers: { cookie, "User-Agent": "Mozilla/5.0" }
         });
 
@@ -74,77 +67,75 @@ builder.defineStreamHandler(async ({ id, config }) => {
         if (!magnet) return { streams: [] };
 
         return {
-            streams: [
-                {
-                    title: `Fano.in — ${config.username}`,
-                    url: magnet[1],
-                    behaviorHints: { bingeGroup: "Fano" }
-                }
-            ]
+            streams: [{
+                title: `Fano.in — ${config.username}`,
+                url: magnet[1]
+            }]
         };
-    } catch (e) {
-        console.log("Fano search error:", e.message);
+    } catch (err) {
+        console.log("Stream error:", err.message);
         return { streams: [] };
     }
 });
 
-// ===== CONFIG PAGE (HTML) =====
-const html = `
+// ==== CONFIG HTML PAGE ====
+const htmlPage = `
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="utf-8" />
+<meta charset="utf-8">
 <title>Fano.in Addon</title>
 <style>
-body { font-family: Arial; background: #0f0f14; color: #fff; display:flex; justify-content:center; align-items:center; height:100vh; }
-.box { background:#1c1c22; padding:28px; border-radius:12px; width:350px; text-align:center; }
-input, button {
- width:100%; padding:12px; margin-top:10px; border-radius:6px; border:0; box-sizing:border-box;
-}
-input { background:#2a2a33; color:white; }
-button { background:#6b4bff; color:white; cursor:pointer; font-weight:bold; }
-button:hover { opacity:0.9; }
+body { font-family:sans-serif; background:#111; color:#fff; height:100vh; margin:0; display:flex; justify-content:center; align-items:center; }
+.box { background:#1c1c1c; padding:25px; border-radius:10px; width:350px; }
+input, button { width:100%; padding:12px; margin-top:10px; border-radius:6px; border:0; box-sizing:border-box; }
+input { background:#2b2b2b; color:white; }
+button { background:#6b4bff; color:white; font-weight:bold; cursor:pointer; }
 </style>
 </head>
 <body>
 <div class="box">
 <h2>Fano.in Addon</h2>
-<p>Ievadiet login datus, lai ģenerētu Stremio instalācijas saiti.</p>
+<p>Ievadiet datus, lai ģenerētu Stremio instalācijas saiti.</p>
 
 <input id="u" placeholder="Lietotājvārds">
-<input id="p" type="password" placeholder="Parole">
+<input id="p" placeholder="Parole" type="password">
 
 <button onclick="go()">Ģenerēt saiti</button>
 
-<p id="out" style="word-break:break-all; margin-top:14px;"></p>
+<p id="out" style="word-break:break-all; margin-top:15px;"></p>
 </div>
 
 <script>
 function go() {
     const u = document.getElementById('u').value.trim();
     const p = document.getElementById('p').value.trim();
-    if (!u || !p) { alert("Ievadiet abus laukus!"); return; }
+    if (!u || !p) return alert("Ievadiet abus laukus!");
 
-    const cfg = btoa(JSON.stringify({username: u, password: p}))
-      .replace(/\\+/g, '-')
-      .replace(/\\//g, '_')
-      .replace(/=+$/, '');
+    let cfg = btoa(JSON.stringify({username:u, password:p}))
+               .replace(/\\+/g,'-')
+               .replace(/\\//g,'_')
+               .replace(/=+$/,'');
 
     const url = window.location.origin + "/" + cfg + "/manifest.json";
 
-    document.getElementById("out").innerHTML = 
-      'Instalācijas saite:<br><br><a href="' + url + '" target="_blank">' + url + '</a>';
+    document.getElementById("out").innerHTML =
+      'Instalācijas saite:<br><br><a href="'+url+'" target="_blank">'+url+'</a>';
 }
 </script>
 </body>
 </html>
 `;
 
+// ==== SERVE HTML ====
+app.get("/", (req, res) => res.send(htmlPage));
 
-// ===== START SERVER (OFFICIAL WAY) =====
-serveHTTP(builder.getInterface(), {
-    port: process.env.PORT || 7000,
-    static: html
-});
+// ==== STREMIO ROUTER ====
+app.use("/:config", getRouter(builder.getInterface()));
 
-console.log("Fano.in addon running on port", process.env.PORT || 7000);
+// ==== MANIFEST WITHOUT CONFIG ====
+app.get("/manifest.json", (req, res) => res.json(manifest));
+
+// ==== START SERVER ====
+const PORT = process.env.PORT || 7000;
+app.listen(PORT, () => console.log("Fano addon running on port", PORT));
