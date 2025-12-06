@@ -1,0 +1,13 @@
+{
+  "id": "lv.raitino90.fano_personal",
+  "version": "1.0.0",
+  "name": "Fano.in Personal",
+  "description": "Privāts Fano.in addons ar lietotāja autorizāciju.",
+  "resources": ["stream"],
+  "types": ["movie", "series"],
+  "idPrefixes": ["tt"],
+  "catalogs": [],
+  "behaviorHints": {
+    "configurable": true
+  }
+}
